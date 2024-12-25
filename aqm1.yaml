@@ -102,25 +102,25 @@ sensor:
     temperature:
       # Temperature in °C
       name: "Temperature"
-      id: bme680_temperature
+      id: temperature
       icon: "mdi:temperature-celsius"
       sample_rate: lp
       filters:
         - median
       on_value: 
         then:
-          component.update: bme680_temperature_f
+          component.update: temperature_f
     pressure:
       # Pressure in hPa
       name: "Pressure"
-      id: bme680_pressure
+      id: pressure
       sample_rate: lp
       filters:
         - median
     humidity:
       # Relative humidity %
       name: "Humidity"
-      id: bme680_humidity
+      id: humidity
       sample_rate: lp
       filters:
         - median
@@ -157,12 +157,12 @@ sensor:
         - median
   - platform: template
     name: "Temperature °F"
-    id: bme680_temperature_f
+    id: temperature_f
     unit_of_measurement: "°F"
     update_interval: never
     icon: "mdi:temperature-fahrenheit"
     lambda: |-
-      return ((float)id(bme680_temperature).state * 1.8) + 32;
+      return ((float)id(temperature).state * 1.8) + 32;
 
 text_sensor:
   - platform: bme68x_bsec2
@@ -251,29 +251,29 @@ script:
           y += ls;
           it->print(0, y, id(roboto), "Temp:");
           if (id(temperature_unit).state == "°C") {
-            float t = id(bme680_temperature).state;
+            float t = id(temperature).state;
             if ( t == t ) /* Nan Check */ {
-              it->printf(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "%.1f %s", t, id(bme680_temperature).get_unit_of_measurement().c_str());
+              it->printf(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "%.1f %s", t, id(temperature).get_unit_of_measurement().c_str());
             } else {
               it->print(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "-- °C");
             }
           } else {
-            float t = id(bme680_temperature_f).state;
+            float t = id(temperature_f).state;
             if ( t == t ) /* Nan Check */ {
-              it->printf(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "%.1f %s", t, id(bme680_temperature_f).get_unit_of_measurement().c_str());
+              it->printf(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "%.1f %s", t, id(temperature_f).get_unit_of_measurement().c_str());
             } else {
               it->print(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "-- °F");
             }
           }
           y += ls;
           it->print(0, y, id(roboto), "Humidity:");
-          if (id(bme680_humidity).has_state()) {
-            it->printf(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "%.1f %s", id(bme680_humidity).state, id(bme680_humidity).get_unit_of_measurement().c_str());
+          if (id(humidity).has_state()) {
+            it->printf(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "%.1f %s", id(humidity).state, id(humidity).get_unit_of_measurement().c_str());
           }
           y += ls;
           it->print(0, y, id(roboto), "Pressure:");
-          if (id(bme680_pressure).has_state()) {
-            it->printf(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "%.1f %s", id(bme680_pressure).state, id(bme680_pressure).get_unit_of_measurement().c_str());
+          if (id(pressure).has_state()) {
+            it->printf(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "%.1f %s", id(pressure).state, id(pressure).get_unit_of_measurement().c_str());
           }
   - id: page_iaq
     then:
@@ -289,16 +289,16 @@ script:
           display::DisplayBuffer *it = id(ssd1306_display);
           it->print(it->get_width()/2, 0, id(roboto), TextAlign::CENTER_HORIZONTAL, "Temperature");
           if (id(temperature_unit).state == "°C") {
-            float t = id(bme680_temperature).state;
+            float t = id(temperature).state;
             if ( t == t ) /* NaN check */ {
-              it->printf(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "%.1f %s", t, id(bme680_temperature).get_unit_of_measurement().c_str());
+              it->printf(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "%.1f %s", t, id(temperature).get_unit_of_measurement().c_str());
             } else {
               it->print(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "--- °C");
             }
           } else {
-            float t = id(bme680_temperature_f).state;
+            float t = id(temperature_f).state;
             if ( t == t ) /* NaN check */ {
-              it->printf(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "%.1f %s", t, id(bme680_temperature_f).get_unit_of_measurement().c_str());
+              it->printf(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "%.1f %s", t, id(temperature_f).get_unit_of_measurement().c_str());
             } else {
               it->print(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "--- °F");
             }
@@ -309,14 +309,14 @@ script:
           /* Show large size humidity */
           display::DisplayBuffer *it = id(ssd1306_display);
           it->print(it->get_width()/2, 0, id(roboto), TextAlign::CENTER_HORIZONTAL, "Humidity");
-          it->printf(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "%.1f %s", id(bme680_humidity).state, id(bme680_humidity).get_unit_of_measurement().c_str());
+          it->printf(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "%.1f %s", id(humidity).state, id(humidity).get_unit_of_measurement().c_str());
   - id: page_pressure
     then:
       - lambda: |-
           /* Show large size pressure */
           display::DisplayBuffer *it = id(ssd1306_display);
-          it->printf(it->get_width()/2, 0, id(roboto), TextAlign::CENTER_HORIZONTAL, "Pressure (%s)", id(bme680_pressure).get_unit_of_measurement().c_str());
-          it->printf(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "%d", (int)id(bme680_pressure).state);
+          it->printf(it->get_width()/2, 0, id(roboto), TextAlign::CENTER_HORIZONTAL, "Pressure (%s)", id(pressure).get_unit_of_measurement().c_str());
+          it->printf(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "%d", (int)id(pressure).state);
   - id: save_changes
     mode: restart
     then:
