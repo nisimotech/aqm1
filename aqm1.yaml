@@ -1,0 +1,359 @@
+substitutions:
+  name: nisimotech-aqm-1
+  friendly_name: Nisimo AQM One
+
+globals:
+  - id: current_page
+    type: int
+    restore_value: no
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2024.6.0
+  name_add_mac_suffix: true
+  project:
+    name: nisimotech.aqm
+    version: 1.0
+  platformio_options:
+    build_flags:
+      - -DPIO_FRAMEWORK_ARDUINO_MMU_CACHE16_IRAM48_SECHEAP_SHARED
+
+preferences:
+  # Reduced frequency here beacuse we manually trigger saves when needed
+  flash_write_interval: 1h
+
+esp8266:
+  board: nodemcuv2
+  restore_from_flash: True
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+
+# Allow Over-The-Air updates
+ota:
+- platform: esphome
+
+# Allow provisioning Wi-Fi via serial
+improv_serial:
+
+wifi:
+  # Set up a wifi access point
+  ap: {}
+
+# In combination with the `ap` this allows the user
+# to provision wifi credentials to the device via WiFi AP.
+captive_portal:
+
+dashboard_import:
+  package_import_url: github://nisimotech/aqm1/aqm1.yaml@main
+  import_full_config: true
+
+# To have a "next url" for improv serial
+web_server:
+
+font:
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 900
+    id: roboto
+    size: 12
+    # glyphs: [ abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890:.%°,"\u0020"]
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 900
+    id: roboto_large
+    size: 32
+    glyphs: [ 1234567890.%°CF,"\u0020"]
+
+#  - file:
+#      type: gfonts
+#      family: Roboto
+#      weight: 900
+#    id: roboto_medium
+#    size: 22
+
+i2c:
+  sda: GPIO12
+  scl: GPIO14
+  scan: false
+  frequency: 800kHz
+
+bme68x_bsec2_i2c:
+  id: bme680_internal
+  address: 0x77
+  model: bme680
+  operating_age: 28d
+  sample_rate: LP
+  supply_voltage: 3.3V
+  state_save_interval: 1h
+
+sensor:
+  - platform: bme68x_bsec2
+    # ID of the bme680_bsec component to use for the next sensors.
+    # Useful when working with multiple devices
+    bme68x_bsec2_id: bme680_internal
+
+    temperature:
+      # Temperature in °C
+      name: "Temperature"
+      id: bme680_temperature
+      icon: "mdi:temperature-celsius"
+      sample_rate: lp
+      filters:
+        - median
+      on_value: 
+        then:
+          component.update: bme680_temperature_f
+    pressure:
+      # Pressure in hPa
+      name: "Pressure"
+      id: bme680_pressure
+      sample_rate: lp
+      filters:
+        - median
+    humidity:
+      # Relative humidity %
+      name: "Humidity"
+      id: bme680_humidity
+      sample_rate: lp
+      filters:
+        - median
+    gas_resistance:
+      # Gas resistance in Ω
+      name: "Gas Resistance"
+      filters:
+        - median
+    iaq:
+      # Indoor air quality value
+      name: "IAQ"
+      id: iaq
+      filters:
+        - median
+      on_value: 
+        then:
+          component.update: air_quality
+    iaq_accuracy:
+      # IAQ accuracy as a numeric value of 0, 1, 2, 3
+      name: "Numeric IAQ Accuracy"
+      id: iaq_accuracy_int
+      on_value: 
+        then:
+          component.update: air_quality
+    co2_equivalent:
+      # CO2 equivalent estimate in ppm
+      name: "CO2 Equivalent"
+      filters:
+        - median
+    breath_voc_equivalent:
+      # Volatile organic compounds equivalent estimate in ppm
+      name: "Breath VOC Equivalent"
+      filters:
+        - median
+  - platform: template
+    name: "Temperature °F"
+    id: bme680_temperature_f
+    unit_of_measurement: "°F"
+    update_interval: never
+    icon: "mdi:temperature-fahrenheit"
+    lambda: |-
+      return ((float)id(bme680_temperature).state * 1.8) + 32;
+
+text_sensor:
+  - platform: bme68x_bsec2
+    iaq_accuracy:
+      name: "BME680 IAQ Accuracy"
+      id: iaq_accuracy
+  - platform: template
+    name: "BME68x IAQ Classification"
+    id: air_quality
+    lambda: |-
+      if ( id(iaq_accuracy_int).state >= 2) {
+        if ( int(id(iaq).state) <= 50) {
+          return {"GREAT"};
+        } else if (int(id(iaq).state) >= 51 && int(id(iaq).state) <= 100) {
+          return {"GOOD"};
+        } else if (int(id(iaq).state) >= 101 && int(id(iaq).state) <= 150) {
+          return {"LIGHT"};
+        } else if (int(id(iaq).state) >= 151 && int(id(iaq).state) <= 200) {
+          return {"MODERATE"};
+        } else if (int(id(iaq).state) >= 201 && int(id(iaq).state) <= 250) {
+          return {"HEAVY"};
+        } else if (int(id(iaq).state) >= 251 && int(id(iaq).state) <= 350) {
+          return {"SEVERE"};
+        } else if (int(id(iaq).state) >= 351) {
+          return {"EXTREME"};
+        } else {
+          return {"???"};
+        }
+      } else {
+        if (id(iaq_accuracy).has_state()) {
+          return str_upper_case(id(iaq_accuracy).state);
+        } else {
+          return {"STARTING"};
+        }
+      }
+
+select:
+  - platform: template
+    name: Temperature Unit
+    id: temperature_unit
+    icon: "mdi:thermometer"
+    options:
+     - °C
+     - °F
+    initial_option: °C
+    restore_value: True
+    entity_category: config
+    optimistic: true
+    set_action:
+      - script.execute: save_changes
+      - logger.log:
+          format: "Chosen option: %s"
+          args: ["x.c_str()"]
+  - platform: template
+    name: Display Mode
+    id: display_mode
+    icon: "mdi:pencil"
+    options:
+     - Summary
+     - Rotating
+    initial_option: Summary
+    restore_value: True
+    entity_category: config
+    optimistic: true
+    set_action:
+      - script.execute: save_changes
+      - logger.log:
+          format: "Chosen option: %s"
+          args: ["x.c_str()"]
+
+script:
+  - id: page_summary
+    then:
+      - lambda: |-
+          display::DisplayBuffer *it = id(ssd1306_display);
+          it->printf(it->get_width()/2, 0, id(roboto), TextAlign::CENTER_HORIZONTAL, "%s", id(air_quality).state.c_str());
+
+          /* SHow the summary information */
+          int y = 13, ls = 12;
+          it->print(0, y, id(roboto), "IAQ:");
+          if (id(iaq).has_state()) {
+            it->printf(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "%.1f", id(iaq).state);
+          } else {
+            it->print(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "--");
+          }
+          y += ls;
+          it->print(0, y, id(roboto), "Temp:");
+          if (id(temperature_unit).state == "°C") {
+            float t = id(bme680_temperature).state;
+            if ( t == t ) /* Nan Check */ {
+              it->printf(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "%.1f %s", t, id(bme680_temperature).get_unit_of_measurement().c_str());
+            } else {
+              it->print(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "-- °C");
+            }
+          } else {
+            float t = id(bme680_temperature_f).state;
+            if ( t == t ) /* Nan Check */ {
+              it->printf(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "%.1f %s", t, id(bme680_temperature_f).get_unit_of_measurement().c_str());
+            } else {
+              it->print(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "-- °F");
+            }
+          }
+          y += ls;
+          it->print(0, y, id(roboto), "Humidity:");
+          if (id(bme680_humidity).has_state()) {
+            it->printf(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "%.1f %s", id(bme680_humidity).state, id(bme680_humidity).get_unit_of_measurement().c_str());
+          }
+          y += ls;
+          it->print(0, y, id(roboto), "Pressure:");
+          if (id(bme680_pressure).has_state()) {
+            it->printf(it->get_width(), y, id(roboto), TextAlign::TOP_RIGHT, "%.1f %s", id(bme680_pressure).state, id(bme680_pressure).get_unit_of_measurement().c_str());
+          }
+  - id: page_iaq
+    then:
+      - lambda: |-
+          /* Show large size IAQ */
+          display::DisplayBuffer *it = id(ssd1306_display);
+          it->print(it->get_width()/2, 0, id(roboto), TextAlign::CENTER_HORIZONTAL, "IAQ");
+          it->printf(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "%.1f", id(iaq).state);
+  - id: page_temperature
+    then:
+      - lambda: |-
+          /* Show large size temperature */
+          display::DisplayBuffer *it = id(ssd1306_display);
+          it->print(it->get_width()/2, 0, id(roboto), TextAlign::CENTER_HORIZONTAL, "Temperature");
+          if (id(temperature_unit).state == "°C") {
+            float t = id(bme680_temperature).state;
+            if ( t == t ) /* NaN check */ {
+              it->printf(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "%.1f %s", t, id(bme680_temperature).get_unit_of_measurement().c_str());
+            } else {
+              it->print(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "--- °C");
+            }
+          } else {
+            float t = id(bme680_temperature_f).state;
+            if ( t == t ) /* NaN check */ {
+              it->printf(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "%.1f %s", t, id(bme680_temperature_f).get_unit_of_measurement().c_str());
+            } else {
+              it->print(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "--- °F");
+            }
+          }
+  - id: page_humidity
+    then:
+      - lambda: |-
+          /* Show large size humidity */
+          display::DisplayBuffer *it = id(ssd1306_display);
+          it->print(it->get_width()/2, 0, id(roboto), TextAlign::CENTER_HORIZONTAL, "Humidity");
+          it->printf(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "%.1f %s", id(bme680_humidity).state, id(bme680_humidity).get_unit_of_measurement().c_str());
+  - id: page_pressure
+    then:
+      - lambda: |-
+          /* Show large size pressure */
+          display::DisplayBuffer *it = id(ssd1306_display);
+          it->printf(it->get_width()/2, 0, id(roboto), TextAlign::CENTER_HORIZONTAL, "Pressure (%s)", id(bme680_pressure).get_unit_of_measurement().c_str());
+          it->printf(it->get_width()/2, 20, id(roboto_large), TextAlign::CENTER_HORIZONTAL, "%d", (int)id(bme680_pressure).state);
+  - id: save_changes
+    mode: restart
+    then:
+      - delay: 3s
+      - lambda: "global_preferences->sync();"
+
+display:
+  - platform: ssd1306_i2c
+    id: ssd1306_display
+    model: "SSD1306 128x64"
+    address: 0x3C
+    update_interval: 1s
+    lambda: |-
+      if (id(display_mode).state == "Summary") {
+          id(page_summary).execute();
+      } else {
+        if (id(current_page) == 0) {
+          id(current_page) = 1;
+        }
+        switch (id(current_page)) {
+          case 1:
+            id(page_iaq).execute();
+            break;
+          case 2:
+            id(page_temperature).execute();
+            break;
+          case 3:
+            id(page_humidity).execute();
+            break;
+          case 4:
+            id(page_pressure).execute();
+            break;
+
+        }
+      }
+    
+interval:
+  - interval: 15s
+    then:
+      - lambda: "id(current_page) = (id(current_page) + 1) % 5;"
